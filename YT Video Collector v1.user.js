@@ -15,6 +15,7 @@
     queryEndpoint: 'https://ci70535.tw1.ru/get_next_query.php',
     saveEndpoint: 'https://ci70535.tw1.ru/upsert_videos.php',
     minViews: 65000,
+    maxViews: null,
     maxItems: 120,
     maxScrolls: 12,
     minRuShare: 0.6,
@@ -99,6 +100,7 @@
     const viewsText = Array.from(item.querySelectorAll('#metadata-line span')).map((x) => x.textContent || '').join(' ');
     const views = parseViews(viewsText);
     if (views === null || views < CFG.minViews) return null;
+    if (CFG.maxViews !== null && views > CFG.maxViews) return null;
 
     return {
       video_id: videoId,
