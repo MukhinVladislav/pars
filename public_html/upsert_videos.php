@@ -24,9 +24,14 @@ if (!is_array($videos) || !$videos) {
 $added = 0;
 $exists = 0;
 $now = time();
+$dbh = DB::getDbh();
+$sth = $dbh->prepare(
+  'INSERT IGNORE INTO videos (video_id, video_url, title, query_text, channel_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+);
 
 foreach ($videos as $v) {
   if (!is_array($v)) continue;
+
   $videoId = trim((string)($v['video_id'] ?? ''));
   $videoUrl = trim((string)($v['video_url'] ?? ''));
   if ($videoId === '' || $videoUrl === '') continue;
@@ -35,17 +40,9 @@ foreach ($videos as $v) {
   $query = mb_substr(trim((string)($v['query'] ?? '')), 0, 255);
   $channelUrl = mb_substr(trim((string)($v['channel_url'] ?? '')), 0, 255);
 
-  $found = DB::getRow('SELECT id FROM videos WHERE video_id = ? LIMIT 1', [$videoId]);
-  if ($found) {
-    $exists++;
-    continue;
-  }
-
-  DB::add(
-    'INSERT INTO videos (video_id, video_url, title, query_text, channel_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [$videoId, $videoUrl, $title, $query, $channelUrl, $now, $now]
-  );
-  $added++;
+  $sth->execute([$videoId, $videoUrl, $title, $query, $channelUrl, $now, $now]);
+  if ($sth->rowCount() > 0) $added++;
+  else $exists++;
 }
 
 echo json_encode(['ok' => true, 'added' => $added, 'exists' => $exists], JSON_UNESCAPED_UNICODE);

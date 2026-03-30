@@ -29,29 +29,39 @@ if ($videoId <= 0) {
 $now = time();
 $added = 0;
 $exists = 0;
-
-foreach ($advertisers as $adv) {
-  if (!is_array($adv)) continue;
-  $companyName = mb_substr(trim((string)($adv['company_name'] ?? '')), 0, 255);
-  $companyType = trim((string)($adv['company_type'] ?? ''));
-  if ($companyName === '' || !in_array($companyType, ['ООО', 'ИП', 'АО'], true)) continue;
-
-  $has = DB::getRow('SELECT id FROM advertisers WHERE company_name = ? LIMIT 1', [$companyName]);
-  if ($has) {
-    $exists++;
-    continue;
-  }
-
-  DB::add(
-    'INSERT INTO advertisers (company_name, company_type, video_id, source_video_url, source_video_date, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    [$companyName, $companyType, $videoId, $videoUrl, $videoDate > 0 ? $videoDate : null, $now]
-  );
-  $added++;
-}
-
-DB::set(
-  "UPDATE videos SET status='done', video_date=?, last_error=NULL, updated_at=? WHERE id=?",
-  [$videoDate > 0 ? $videoDate : null, $now, $videoId]
+$dbh = DB::getDbh();
+$sth = $dbh->prepare(
+  'INSERT INTO advertisers (company_name, company_type, video_id, source_video_url, source_video_date, created_at)
+   VALUES (?, ?, ?, ?, ?, ?)
+   ON DUPLICATE KEY UPDATE id=id'
 );
 
-echo json_encode(['ok' => true, 'added' => $added, 'exists' => $exists], JSON_UNESCAPED_UNICODE);
+try {
+  foreach ($advertisers as $adv) {
+    if (!is_array($adv)) continue;
+
+    $companyName = mb_substr(trim((string)($adv['company_name'] ?? '')), 0, 255);
+    $companyType = trim((string)($adv['company_type'] ?? ''));
+    if ($companyName === '' || !in_array($companyType, ['ООО', 'ИП', 'АО'], true)) continue;
+
+    $sth->execute([$companyName, $companyType, $videoId, $videoUrl, $videoDate > 0 ? $videoDate : null, $now]);
+
+    if ($sth->rowCount() === 1) $added++;
+    else $exists++;
+  }
+
+  DB::set(
+    "UPDATE videos SET status='done', video_date=?, last_error=NULL, updated_at=? WHERE id=?",
+    [$videoDate > 0 ? $videoDate : null, $now, $videoId]
+  );
+
+  echo json_encode(['ok' => true, 'added' => $added, 'exists' => $exists], JSON_UNESCAPED_UNICODE);
+} catch (Throwable $e) {
+  DB::set(
+    "UPDATE videos SET status='error', last_error=?, updated_at=? WHERE id=?",
+    [mb_substr($e->getMessage(), 0, 500), $now, $videoId]
+  );
+
+  http_response_code(500);
+  echo json_encode(['ok' => false, 'error' => 'save_failed'], JSON_UNESCAPED_UNICODE);
+}
